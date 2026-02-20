@@ -1,0 +1,957 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1" />
+<title>金額ルーレット v40（ボタン安定／¥移動は1回だけ／2秒ためて円確定）</title>
+<style>
+  :root{ --bg:#0f0f0f; --panel:#1c1c1c; --gold:#ffd700; --muted:#aaa; }
+  *{ box-sizing:border-box; }
+  body{
+    font-family: system-ui, -apple-system, sans-serif;
+    margin:0;
+    background:var(--bg);
+    color:#fff;
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .screen{ width:100vw; max-width:760px; padding:12px; }
+  .card{
+    background:var(--panel);
+    border:1px solid #333;
+    border-radius:18px;
+    padding:22px;
+    text-align:center;
+    position:relative;
+  }
+  .title{ font-weight:900; letter-spacing:0.4px; color:#ddd; margin:0 0 6px; user-select:none; }
+  .sub{ margin:0 0 18px; color:var(--muted); font-size:13px; line-height:1.55; }
+
+  .price{
+    position:relative;
+    font-size:64px;
+    font-weight:1000;
+    color:var(--gold);
+    text-shadow:0 0 14px rgba(255,215,0,0.45);
+    margin:12px 0 10px;
+    letter-spacing:2px;
+    user-select:none;
+    display:flex;
+    align-items:baseline;
+    justify-content:center;
+    gap:10px;
+  }
+  .yen{ font-size:52px; opacity:0.95; display:inline-block; }
+  .digits{ display:inline-flex; align-items:baseline; justify-content:center; }
+  .digit{
+    display:inline-block;
+    height:1em;
+    overflow:hidden;
+    position:relative;
+    width:0.78em;
+    margin:0 0.02em;
+  }
+  .digit .col{
+    display:block;
+    line-height:1em;
+    white-space:pre;
+    transform: translateY(0);
+    transition: transform 0.12s linear;
+  }
+  .sep{ display:inline-block; width:0.45em; text-align:center; opacity:0.95; transform: translateY(-0.02em); }
+
+  #yenPrefix.mover{
+    position:absolute;
+    top:0.04em;
+    left:0;
+    will-change: transform;
+    z-index:5;
+  }
+
+  .resultLine{
+    min-height: 26px;
+    margin: 0 0 6px;
+    font-size:18px;
+    font-weight:900;
+    opacity:0;
+    transform:translateY(-4px);
+    transition: opacity 180ms ease-out, transform 180ms ease-out;
+  }
+  .resultLine.on{ opacity:1; transform:translateY(0); }
+
+  .row{ display:flex; gap:12px; flex-wrap:wrap; align-items:center; justify-content:center; margin-top:10px; }
+  #presetRow{ flex-wrap:wrap; overflow-x:hidden; justify-content:center; }
+  #presetRow button{ min-width:140px; flex:0 1 160px; }
+  #presetRow button{ cursor:pointer; }
+  button{
+    padding:14px 18px;
+    font-size:16px;
+    border-radius:14px;
+    border:1px solid #555;
+    background:#222;
+    color:#fff;
+    min-width:140px;
+  }
+  button.primary{ border-color:var(--gold); color:var(--gold); }
+  button:disabled{ opacity:0.45; }
+
+  input{
+    width:min(460px, 100%);
+    padding:14px 16px;
+    border-radius:14px;
+    border:1px solid #555;
+    background:#111;
+    color:#fff;
+    font-size:22px;
+    text-align:center;
+  }
+  .hint{ margin-top:14px; color:var(--muted); font-size:12.5px; line-height:1.6; }
+
+  .tapzone{
+    position:absolute;
+    top:10px; right:10px;
+    width:44px; height:44px;
+    border-radius:12px;
+    opacity:0;
+  }
+
+  .full{
+    width:100%;
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+  }
+  .customerCard{ width:min(980px, 100%); }
+
+  .finalOverlay{
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    pointer-events:none;
+    opacity:0;
+    transform:scale(0.95);
+  }
+  .finalOverlay.on{
+    opacity:1;
+    transform:scale(1);
+    transition: opacity 160ms ease-out, transform 160ms ease-out;
+  }
+  .finalText{
+    font-size:72px;
+    font-weight:1000;
+    color:var(--gold);
+    text-shadow: 0 0 30px rgba(255,215,0,0.85), 0 0 8px rgba(255,255,255,0.18);
+    padding: 12px 18px;
+    border-radius: 18px;
+    background: rgba(0,0,0,0.25);
+    border: 1px solid rgba(255,215,0,0.25);
+  }
+  .don{ animation: don 520ms ease-out; }
+  .price.donMain{ animation: donMain 520ms cubic-bezier(.2,.9,.2,1.15); }
+  @keyframes donMain{
+    0%{ transform:scale(0.98); }
+    60%{ transform:scale(1.12); }
+    100%{ transform:scale(1.0); }
+  }
+
+  @keyframes don{
+    0%{ transform:scale(0.75); filter:blur(2px); }
+    60%{ transform:scale(1.18); filter:blur(0px); }
+    100%{ transform:scale(1.0); }
+  }
+
+  /* --- Marquee frame (bulbs chasing like the real show) --- */
+  .marqueeFrame{
+    position:relative;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:22px 26px;
+    border-radius:22px;
+    margin: 10px auto 14px;
+    background: rgba(0,0,0,0.18);
+    border: 1px solid rgba(255,215,0,0.18);
+    box-shadow: 0 10px 28px rgba(0,0,0,0.35), inset 0 0 20px rgba(255,215,0,0.10);
+  }
+  .marqueeFrame::before{
+    content:"";
+    position:absolute;
+    inset:-12px;
+    border-radius:28px;
+    /* dots (bulbs) */
+    background:
+      radial-gradient(circle, rgba(255,230,150,0.95) 0 4px, rgba(255,230,150,0.15) 5px 7px, rgba(0,0,0,0) 8px) 0 0/26px 26px,
+      radial-gradient(circle, rgba(255,230,150,0.25) 0 4px, rgba(0,0,0,0) 6px) 13px 13px/26px 26px;
+    /* cut center (so bulbs stay only on the ring) */
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    padding:12px;
+    box-shadow: 0 0 22px rgba(255,215,0,0.35);
+    animation: bulbsChase 1.05s steps(12) infinite;
+    pointer-events:none;
+  }
+  .marqueeFrame::after{
+    content:"";
+    position:absolute;
+    inset:-6px;
+    border-radius:26px;
+    border: 2px solid rgba(255,215,0,0.35);
+    box-shadow: 0 0 18px rgba(255,215,0,0.35), inset 0 0 18px rgba(255,215,0,0.22);
+    pointer-events:none;
+  }
+  .marqueeFrame.locked::before{ animation-duration: 0.65s; filter: brightness(1.35); }
+@keyframes bulbsChase{
+    0%{ filter: brightness(0.95); background-position: 0 0, 13px 13px; }
+    100%{ filter: brightness(1.25); background-position: 260px 0, 273px 13px; }
+  }
+
+
+  /* --- Customer background video (Canva MP4) --- */
+  #customerScreen{ position:relative; overflow:hidden; }
+  #bgVideo{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    z-index:0;
+    pointer-events:none;
+    filter: saturate(1.05) contrast(1.05);
+  }
+  #customerScreen .customerCard{
+    position:relative;
+    z-index:1;
+    background: rgba(20,20,20,0.68);
+    backdrop-filter: blur(2px);
+  }
+
+
+  /* iPhone full-screen & safe-area */
+  html, body { height: 100%; }
+  body{
+    padding-top: env(safe-area-inset-top);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+  }
+  .full{ min-height: 100svh; }
+
+
+@media (max-width: 480px){
+  .screen{ padding:10px; }
+  .card{ border-radius:14px; }
+  .stage{ padding:14px 10px; }
+  .controls{ gap:10px; }
+  .btn{ min-height:44px; padding:12px 10px; font-size:16px; }
+  .chip{ padding:10px 10px; font-size:14px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Staff -->
+<div class="screen" id="staffScreen">
+  <div class="card">
+    <h1 class="title">お店用：金額セット</h1>
+    <p class="sub">金額を入力 → 「お客様画面へ」</p>
+    <div style="display:flex;justify-content:center;">
+      <input id="targetInput" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" value="0" />
+    </div>
+
+    <div class="row" id="presetRow" style="margin-top:12px;">
+      <button type="button" class="primary preset" data-val="500" onclick="window.__preset && window.__preset(500)" onclick="window.__preset && window.__preset(500)">500円</button>
+      <button type="button" class="primary preset" data-val="1000" onclick="window.__preset && window.__preset(1000)" onclick="window.__preset && window.__preset(1000)">1,000円</button>
+      <button type="button" class="primary preset" data-val="3000" onclick="window.__preset && window.__preset(3000)" onclick="window.__preset && window.__preset(3000)">3,000円</button>
+      <button type="button" class="primary preset" data-val="5000" onclick="window.__preset && window.__preset(5000)" onclick="window.__preset && window.__preset(5000)">5,000円</button>
+      <button type="button" class="primary preset" data-val="10000" onclick="window.__preset && window.__preset(10000)" onclick="window.__preset && window.__preset(10000)">10,000円</button>
+            <button type="button" class="primary preset" data-val="100000" onclick="window.__preset && window.__preset(100000)">100,000円</button>
+<button type="button" id="sameAsLast" onclick="window.__presetLast && window.__presetLast()" onclick="window.__presetLast && window.__presetLast()">前回と同じ</button>
+      <button type="button" id="clearInput" onclick="window.__presetClear && window.__presetClear()" onclick="window.__presetClear && window.__presetClear()">クリア</button>
+    </div>
+
+    <div class="row">
+      <button class="primary" id="goCustomer" type="button">お客様画面へ</button>
+    </div>
+    <div class="hint" id="staffMsg" style="margin-top:10px; color:#ffd700; font-weight:900;"></div>
+    <div class="hint">
+      ・上限：<strong>1億（9桁）</strong><br>
+      ・お客様画面から戻る：右上（見えない場所）を<strong>5回タップ</strong>
+    </div>
+  </div>
+</div>
+
+<!-- Customer -->
+<div class="full" id="customerScreen" style="display:none;">
+  <video id="bgVideo" autoplay muted loop playsinline preload="auto" aria-hidden="true">
+    <source src="background.mp4" type="video/mp4">
+  </video>
+  <div class="card customerCard">
+    <div class="tapzone" id="secretTap" title="secret"></div>
+
+    <h2 class="title">金額ルーレット</h2>
+    <p class="sub">STARTで回転、STOPで右の桁から止まります</p>
+<div class="hint" id="lockBadge" style="display:none;margin-top:8px;color:#ffd700;font-weight:900;">🔒 確定後ロック中（右上5回タップで解除）</div>
+
+    <div class="marqueeFrame" id="marqueeFrame">
+    <div class="price">
+      <span class="yen" id="yenPrefix">¥</span>
+      <span class="digits" id="digits"></span>
+      <span class="yen" id="yenSuffix" style="display:none;">円</span>
+    </div>
+  </div>
+
+    <div class="resultLine" id="resultLine"></div>
+
+    <div class="row">
+      <button class="primary" id="start" type="button">START</button>
+      <button id="stop" type="button" disabled>STOP</button>
+      <button id="again" type="button" disabled>次の方へ</button>
+    </div>
+
+    <div class="finalOverlay" id="finalOverlay">
+      <div class="finalText" id="finalText"></div>
+    </div>
+
+    <div class="hint" id="staffMsg" style="margin-top:10px; color:#ffd700; font-weight:900;"></div>
+    <div class="hint">※ 設定へ戻る：右上（見えない場所）を<strong>5回タップ</strong></div>
+  </div>
+</div>
+
+<script>
+window.addEventListener('DOMContentLoaded', () => {
+
+
+  // iPhone/iPad対策: タップが効かない/遅い問題を避ける
+  const enableTap = (el) => {
+    if(!el) return;
+    el.style.touchAction = 'manipulation';
+    el.addEventListener('touchstart', (e) => {
+      // iOS Safariは video/overlays 等でクリックが落ちることがあるので強制的に click へ
+      e.preventDefault();
+      e.stopPropagation();
+      el.click();
+    }, {passive:false});
+  };
+  // 主要ボタンに適用（後でDOMが揃ったらまとめて当てる）
+  const enableTapAll = () => {
+    document.querySelectorAll('button, .chip, [role="button"]').forEach(enableTap);
+  };
+  enableTapAll();
+  // 動的に生成される要素にも効くように少し遅延して再適用
+  setTimeout(enableTapAll, 200);
+  setTimeout(enableTapAll, 1000);
+
+  const DEFAULT_DISPLAY_LEN = 10;
+  const MAX_INPUT_DIGITS = 9;
+  const MAX_VALUE_RAW = "999999999";
+
+  const digitsOnly = (s) => String(s).replace(/[^\d]/g,"");
+  const randDigit  = () => Math.floor(Math.random()*10);
+  const commaString = (rawDigits) => rawDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const stripLeadingZeros = (rawDigits) => {
+    const t = rawDigits.replace(/^0+(?=\d)/, "");
+    return t.length ? t : "0";
+  };
+
+  // speech
+  function speak(text){
+    if(!("speechSynthesis" in window)) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "ja-JP";
+    u.rate = 1.15;
+    u.pitch = 1.15;
+    u.volume = 1.0;
+    speechSynthesis.speak(u);
+  }
+  const placeSpeakMap = {
+    0: "1",
+    1: "10",
+    2: "100",
+    3: "1000",
+    4: "万",
+    5: "10万",
+    6: "100万",
+    7: "千万",
+    8: "1億"
+  };
+  
+  // ----------------------
+  // SFX (WebAudio synth)
+  // ----------------------
+  let audioCtx = null;
+  let drumTimer = null;
+  function getAudio(){
+    if(!audioCtx){
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new Ctx();
+    }
+    if(audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+
+  function playTone(freq=440, dur=0.06, type="square", gain=0.06){
+    const ctx = getAudio();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = type;
+    o.frequency.value = freq;
+    g.gain.value = 0.0001;
+    o.connect(g); g.connect(ctx.destination);
+    const t = ctx.currentTime;
+    o.start(t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.stop(t + dur + 0.01);
+  }
+
+  function playNoise(dur=0.15, gain=0.03, hp=400){
+    const ctx = getAudio();
+    const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for(let i=0;i<data.length;i++) data[i] = (Math.random()*2-1);
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = "highpass";
+    filter.frequency.value = hp;
+
+    const g = ctx.createGain();
+    g.gain.value = 0.0001;
+
+    src.connect(filter);
+    filter.connect(g);
+    g.connect(ctx.destination);
+
+    const t = ctx.currentTime;
+    src.start(t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.stop(t + dur + 0.01);
+  }
+
+  // START: drumroll-ish (rapid low clicks)
+  function startDrumroll(){
+    stopDrumroll();
+    const ctx = getAudio();
+    drumTimer = setInterval(() => {
+      // mixed click + noise
+      playTone(120 + Math.random()*40, 0.03, "square", 0.03);
+      if(Math.random() < 0.35) playNoise(0.04, 0.015, 800);
+    }, 70);
+  }
+  function stopDrumroll(){
+    if(drumTimer){
+      clearInterval(drumTimer);
+      drumTimer = null;
+    }
+  }
+
+  // Digit stop: small click
+  function sfxClick(){
+    playTone(560 + Math.random()*80, 0.045, "square", 0.035);
+  }
+
+  // ¥ 'bashi': stronger hit
+  function sfxBashi(){
+    playTone(180, 0.08, "sawtooth", 0.08);
+    playNoise(0.10, 0.04, 700);
+  }
+
+  // pre-speak murmur: short low noise
+  function sfxMurmur(){
+    playNoise(0.35, 0.02, 180);
+  }
+
+  function speakPlace(indexFromRight){
+    const t = placeSpeakMap[indexFromRight];
+    if(t) speak(t);
+  }
+
+  // elements
+  const staffScreen = document.getElementById("staffScreen");
+  const customerScreen = document.getElementById("customerScreen");
+  const targetInput = document.getElementById("targetInput");
+  const goCustomerBtn = document.getElementById("goCustomer");
+  const presetRow = document.getElementById("presetRow");
+  const sameAsLastBtn = document.getElementById("sameAsLast");
+  const clearInputBtn = document.getElementById("clearInput");
+
+  const staffMsg = document.getElementById("staffMsg");
+  function setStaffMsg(t){ if(staffMsg) staffMsg.textContent = t || ""; }
+
+
+  const lockBadge = document.getElementById("lockBadge");
+
+  const STORAGE_KEY_LAST = "priceRoulette_lastTargetRaw";
+
+
+  const secretTap = document.getElementById("secretTap");
+
+  const digitsRoot = document.getElementById("digits");
+  const startBtn = document.getElementById("start");
+  const stopBtn = document.getElementById("stop");
+  const againBtn = document.getElementById("again");
+
+  const resultLine = document.getElementById("resultLine");
+  const overlay = document.getElementById("finalOverlay");
+  const overlayText = document.getElementById("finalText");
+
+  const yenPrefix = document.getElementById("yenPrefix");
+  const yenSuffix = document.getElementById("yenSuffix");
+
+  const marqueeFrame = document.getElementById('marqueeFrame');
+
+  // staff input formatting (0 overwrite + clamp)
+  function formatTargetInput(){
+    let raw = digitsOnly(targetInput.value);
+    if(raw.length === 0){
+      targetInput.value = "0";
+      return;
+    }
+  function setTargetRaw(rawDigits){
+    // rawDigits: digits only
+    targetInput.value = String(rawDigits || "0");
+    formatTargetInput();
+  }
+  // expose for inline handlers (fallback for environments where delegated events misbehave)
+  // expose for inline handlers (加算モード)
+  function __addToInput(addVal){
+    const curRaw = (String(targetInput.value || "").replace(/[^0-9]/g,"")) || "0";
+    const cur = Number(curRaw);
+    const add = Number(addVal || 0);
+    let next = cur + add;
+
+    // 上限：9桁（1億未満まで）
+    const MAX = 999999999;
+    if(next > MAX) next = MAX;
+
+    setTargetRaw(String(next));
+  }
+
+  window.__preset = (val) => {
+    __addToInput(val);
+    setStaffMsg(`加算：+${commaString(String(val))}円`);
+  };
+  window.__presetLast = () => {
+    const last = localStorage.getItem(STORAGE_KEY_LAST) || "0";
+    __addToInput(last);
+    setStaffMsg("加算：前回金額");
+  };
+  window.__presetClear = () => { setTargetRaw("0"); setStaffMsg("クリア"); };
+
+
+    if(raw.length > MAX_INPUT_DIGITS) raw = raw.slice(0, MAX_INPUT_DIGITS);
+    if(raw.length === MAX_INPUT_DIGITS && raw > MAX_VALUE_RAW) raw = MAX_VALUE_RAW;
+    targetInput.value = commaString(raw);
+  }
+  targetInput.addEventListener("beforeinput", (e) => {
+    if(e.inputType === "insertText" && e.data && /^\d$/.test(e.data)){
+      const curRaw = digitsOnly(targetInput.value);
+      if(curRaw === "0"){
+        e.preventDefault();
+        targetInput.value = e.data;
+        formatTargetInput();
+      }
+    }
+  });
+  targetInput.addEventListener("focus", () => {
+    const curRaw = digitsOnly(targetInput.value);
+    if(curRaw === "0") setTimeout(()=>targetInput.select(), 0);
+  });
+  targetInput.addEventListener("input", formatTargetInput);
+  targetInput.addEventListener("blur", formatTargetInput);
+
+  // presets（デリゲート＋ボタン直付けの二段構えで確実に）
+  function handlePresetButton(btn){
+    if(!btn) return;
+    const val = btn.getAttribute("data-val");
+    if(val !== null){
+      setTargetRaw(val);
+      setStaffMsg(`セット：${btn.textContent}`);
+      return;
+    }
+    if(btn.id === "sameAsLast"){
+      const last = localStorage.getItem(STORAGE_KEY_LAST) || "0";
+      setTargetRaw(last);
+      setStaffMsg("セット：前回と同じ");
+      return;
+    }
+    if(btn.id === "clearInput"){
+      setTargetRaw("0");
+      setStaffMsg("クリア");
+      return;
+    }
+  }
+
+  function onPresetEvent(ev){
+    if(ev && ev.preventDefault) ev.preventDefault();
+    if(ev && ev.stopPropagation) ev.stopPropagation();
+    targetInput.blur();
+    const btn = ev.target && ev.target.closest ? ev.target.closest("button") : null;
+    handlePresetButton(btn);
+  }
+
+  if(presetRow){
+    // delegate
+    ["click","touchstart","pointerdown","mousedown"].forEach(type => {
+      presetRow.addEventListener(type, onPresetEvent, {passive:false});
+    });
+
+    // direct (in case delegate is blocked)
+    presetRow.querySelectorAll("button").forEach(b => {
+      ["click","touchstart","pointerdown","mousedown"].forEach(type => {
+        b.addEventListener(type, (ev)=>{ onPresetEvent(ev); }, {passive:false});
+      });
+    });
+  }
+// screens
+  let secretCount = 0;
+  let secretTimer = null;
+
+  function showStaff(){
+    stopAll();
+    customerScreen.style.display = "none";
+    staffScreen.style.display = "";
+    secretCount = 0;
+  }
+  function showCustomer(){
+    staffScreen.style.display = "none";
+    customerScreen.style.display = "";
+    prepareFromTarget();
+  }
+
+  goCustomerBtn.addEventListener("click", () => {
+    formatTargetInput();
+    const raw = digitsOnly(targetInput.value);
+    localStorage.setItem("priceRoulette_lastTargetRaw", raw.length ? raw : "0");
+    showCustomer();
+  });
+
+  secretTap.addEventListener("click", () => {
+    secretCount++;
+    if(secretTimer) clearTimeout(secretTimer);
+    secretTimer = setTimeout(()=>{ secretCount = 0; }, 2500);
+    if(secretCount >= 5){
+      secretCount = 0;
+      if(lockedAfterFinish){
+        // 店員解除（その場で初期状態に戻す）
+        setLock(false);
+        prepareFromTarget();
+      }else{
+        showStaff();
+      }
+    }
+  });
+
+  // digits builder
+  let digitElems = [];
+  let digitTimers = [];
+
+  function makeDigit(){
+    const d = document.createElement("span");
+    d.className = "digit";
+    const col = document.createElement("span");
+    col.className = "col";
+    let text = "";
+    for(let i=0;i<30;i++) text += (i%10) + "\n";
+    col.textContent = text;
+    d.appendChild(col);
+    d.setDigit = (n, speed=0.12) => {
+      col.style.transition = `transform ${speed}s linear`;
+      col.style.transform = `translateY(-${n}em)`;
+    };
+    return d;
+  }
+  function makeSep(){
+    const s = document.createElement("span");
+    s.className = "sep";
+    s.textContent = ",";
+    return s;
+  }
+  function buildDigitsWithCommas(len){
+    digitsRoot.innerHTML = "";
+    digitElems = [];
+    digitTimers = [];
+    for(let i=0;i<len;i++){
+      const remaining = len - i;
+      if(i !== 0 && remaining % 3 === 0){
+        const sep = makeSep();
+        sep.dataset.beforeDigit = String(i);
+        digitsRoot.appendChild(sep);
+      }
+      const d = makeDigit();
+      d.dataset.pos = String(i);
+      digitsRoot.appendChild(d);
+      digitElems.push(d);
+      digitTimers.push(null);
+    }
+  }
+
+  function setAllDigitsTo(n, speed=0.0){
+    for(const d of digitElems) d.setDigit(n, speed);
+  }
+  function startAllDigitSpin(){
+    for(let i=0;i<digitElems.length;i++){
+      if(digitTimers[i] !== null) continue;
+      digitTimers[i] = setInterval(()=>{
+        digitElems[i].setDigit(randDigit(), 0.10);
+      }, 80);
+    }
+  }
+  function stopAllTimers(){
+    for(let i=0;i<digitTimers.length;i++){
+      if(digitTimers[i] !== null){
+        clearInterval(digitTimers[i]);
+        digitTimers[i] = null;
+      }
+    }
+  }
+
+  // keep layout, blank left side
+  function blankLeftDigits(endIdx){
+    for(let i=0;i<digitElems.length;i++){
+      digitElems[i].style.opacity = (i < endIdx) ? "0" : "1";
+    }
+    const seps = digitsRoot.querySelectorAll(".sep");
+    seps.forEach(sep => {
+      const bd = Number(sep.dataset.beforeDigit || "0");
+      sep.style.opacity = (bd <= endIdx) ? "0" : "1";
+    });
+  }
+  function unblankAllDigits(){
+    for(const d of digitElems) d.style.opacity = "1";
+    const seps = digitsRoot.querySelectorAll(".sep");
+    seps.forEach(sep => sep.style.opacity = "1");
+  }
+
+  // currency animation
+  function currencySpinMode(){
+    yenPrefix.style.display = "";
+    yenSuffix.style.display = "none";
+    yenPrefix.classList.remove("mover");
+    yenPrefix.style.transform = "";
+    yenPrefix.style.transition = "";
+  }
+  let yenHasMoved = false;
+
+  function yenMoveToVisibleDigit(endIdx){
+    if(yenHasMoved) return;
+    yenHasMoved = true;
+
+    yenPrefix.style.display = "";
+    yenSuffix.style.display = "none";
+
+    yenPrefix.classList.add("mover");
+    yenPrefix.style.transition = "none";
+
+    const priceRect = yenPrefix.parentElement.getBoundingClientRect();
+    const digitsRect = digitsRoot.getBoundingClientRect();
+    const firstVisible = digitElems[endIdx] ? digitElems[endIdx].getBoundingClientRect() : digitsRect;
+
+    const yenW = yenPrefix.getBoundingClientRect().width || 40;
+    const startX  = (digitsRect.left - priceRect.left) - (yenW * 1.6);
+    const targetX = (firstVisible.left - priceRect.left) - (yenW * 1.05);
+
+    yenPrefix.style.transform = `translateX(${startX}px)`;
+    void yenPrefix.offsetWidth;
+
+    yenPrefix.style.transition = "transform 650ms cubic-bezier(.2,.9,.2,1.15)";
+    yenPrefix.style.transform = `translateX(${targetX}px)`;
+  }
+
+  function currencyFinalMode(){ /* unused */ }
+
+  // run state
+  let displayLen = DEFAULT_DISPLAY_LEN;
+  let targetRaw = "0";
+  let targetRawUnpadded = "0";
+  let targetDigitsPadded = [];
+  let effectiveLen = 1;
+
+  let spinning=false;
+  let stopping=false;
+  let finished=false;
+  let autoResetTimer=null;
+
+  let lockedAfterFinish = false;
+  function setLock(on){
+    lockedAfterFinish = !!on;
+    if(lockBadge) lockBadge.style.display = lockedAfterFinish ? '' : 'none';
+    if(marqueeFrame){ marqueeFrame.classList.toggle('locked', lockedAfterFinish); }
+    setUI();
+  }
+
+
+  function setUI(){
+    const locked = lockedAfterFinish;
+    startBtn.disabled = locked || spinning || stopping;
+    stopBtn.disabled  = locked || (!spinning) || stopping;
+    againBtn.disabled = locked || (!finished) || spinning || stopping;
+  }
+  function hideResult(){ resultLine.classList.remove("on"); }
+  function showResult(finalStr){
+    resultLine.textContent = `鑑定結果：${finalStr}円です！`;
+    resultLine.classList.add("on");
+  }
+  function showDon(finalStr){
+    overlayText.textContent = `¥${finalStr}`;
+    overlay.classList.add("on");
+    overlayText.classList.remove("don");
+    void overlayText.offsetWidth;
+    overlayText.classList.add("don");
+    setTimeout(()=>overlay.classList.remove("on"), 1100);
+  }
+  function scheduleAutoReset(){ /* disabled */ }
+
+  function prepareFromTarget(){
+    if(autoResetTimer) clearTimeout(autoResetTimer);
+    autoResetTimer = null;
+
+    const raw = digitsOnly(targetInput.value);
+    targetRaw = raw.length ? raw : "0";
+
+    targetRawUnpadded = stripLeadingZeros(targetRaw);
+    effectiveLen = Math.max(1, targetRawUnpadded.length);
+
+    displayLen = Math.max(DEFAULT_DISPLAY_LEN, targetRaw.length);
+
+    const padded = targetRaw.padStart(displayLen, "0");
+    targetDigitsPadded = padded.split("").map(x => Number(x));
+
+    buildDigitsWithCommas(displayLen);
+    setAllDigitsTo(0, 0.0);
+    unblankAllDigits();
+    stopAllTimers();
+
+    yenHasMoved = false;
+    currencySpinMode();
+
+    spinning=false; stopping=false; finished=false;
+    setLock(false);
+    hideResult();
+    setUI();
+  }
+
+  function stopAll(){
+    if(autoResetTimer) clearTimeout(autoResetTimer);
+    autoResetTimer = null;
+    stopAllTimers();
+    spinning=false; stopping=false; finished=false;
+    setLock(false);
+    hideResult();
+    setUI();
+  }
+
+  startBtn.addEventListener("click", () => {
+    if(stopping || lockedAfterFinish) return;
+    // instant reset before spinning
+    prepareFromTarget();
+    startDrumroll();
+
+    spinning=true;
+    setUI();
+    startAllDigitSpin();
+  });
+
+  async function lockDigitToTarget(idx, finalDigit, durationMs){
+    const start = performance.now();
+    return new Promise((resolve)=>{
+      const t=setInterval(()=>{
+        digitElems[idx].setDigit(randDigit(), 0.20);
+        if(performance.now() - start >= durationMs){
+          clearInterval(t);
+          digitElems[idx].setDigit(finalDigit, 0.35);
+          if(digitTimers[idx] !== null){
+            clearInterval(digitTimers[idx]);
+            digitTimers[idx] = null;
+          }
+          setTimeout(resolve, 150);
+        }
+      }, 90);
+    });
+  }
+
+  stopBtn.addEventListener("click", async () => {
+    if(!spinning || stopping) return;
+    stopping=true;
+    setUI();
+
+    const startIdx = displayLen - 1;
+    const endIdx = Math.max(0, displayLen - effectiveLen);
+
+    let placeIndex=0;
+    for(let i=startIdx; i>=endIdx; i--){
+      const isLastStopped = (i === endIdx);
+      const duration = isLastStopped ? 1400 : 900;
+      await lockDigitToTarget(i, targetDigitsPadded[i], duration);
+      sfxClick();
+      speakPlace(placeIndex);
+      placeIndex++;
+    }
+
+    // stop remaining left digits immediately
+    for(let i=0; i<endIdx; i++){
+      if(digitTimers[i] !== null){
+        clearInterval(digitTimers[i]);
+        digitTimers[i] = null;
+      }
+      digitElems[i].setDigit(0, 0.0);
+    }
+    stopAllTimers();
+    stopDrumroll();
+
+    spinning=false;
+    stopping=false;
+    finished=true;
+    setUI();
+
+    // layout stays; blank left side and move ¥ immediately (ONLY ONCE)
+    blankLeftDigits(endIdx);
+    yenMoveToVisibleDigit(endIdx);
+    setTimeout(() => sfxBashi(), 680);
+
+    const finalStr = commaString(targetRawUnpadded);
+
+    // ¥が止まってから少しタメて読み上げ（ポップアップ表示なし）
+    setTimeout(() => {
+      sfxMurmur();
+    }, 1500);
+    setTimeout(() => {
+      speak(finalStr + "円");
+      // ルーレット表示自体を「ドン」
+      const priceEl = document.querySelector(".price");
+      if(priceEl){
+        priceEl.classList.remove("donMain");
+        void priceEl.offsetWidth;
+        priceEl.classList.add("donMain");
+      }
+      // 確定後ロック
+      setLock(true);
+    }, 2000);
+
+    // FINAL表示＆読み上げはやめる（¥が止まったあとに大きく表示するだけ）
+    // ¥の移動（650ms）完了後にドン表示（¥も一緒に大きく）
+    /* pop-up表示なし */
+    /* no auto reset */
+  });
+
+  againBtn.addEventListener("click", () => prepareFromTarget());
+
+  // init
+  formatTargetInput();
+  setUI();
+
+});
+</script>
+
+</body>
+</html>
