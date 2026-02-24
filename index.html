@@ -329,9 +329,14 @@
 window.addEventListener('DOMContentLoaded', () => {
 
   // ★ 音を有効化（iPad対策）
-  document.addEventListener("pointerdown", () => {
-    try { getAudio(); } catch(e) {}
-  }, { once:true });
+document.addEventListener("pointerdown", () => {
+  try { 
+    getAudio(); 
+    const u = new SpeechSynthesisUtterance(" ");
+    u.lang = "ja-JP";
+    speechSynthesis.speak(u);
+  } catch(e) {}
+}, { once:true });
 
   // iOS: prevent long-press context menu on buttons (best-effort)
   document.addEventListener("contextmenu", (e) => {
