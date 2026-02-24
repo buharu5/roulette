@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>金額ルーレット v57-win-fix</title>
+<style>
+  :root{--bg:#0f0f0f;--panel:#1c1c1c;--gold:#ffd700;--muted:#aaa;}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:#fff;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .screen,.full{min-height:100svh; display:flex; align-items:center; justify-content:center; padding:24px;}
+  .card{
+    width:min(980px,100%); background:rgba(20,20,20,.72);
+    border:1px solid rgba(255,255,255,.12); border-radius:18px; padding:22px; position:relative;
+    backdrop-filter: blur(2px);
+  }
+  .title{margin:0 0 6px; font-weight:900; color:#ddd}
+  .sub{margin:0 0 16px; color:var(--muted); font-size:13px; line-height:1.6}
+  .row{display:flex; gap:12px; flex-wrap:wrap; justify-content:center; align-items:center; margin-top:10px;}
+  button{
+    padding:14px 18px; font-size:16px; border-radius:14px;
+    border:1px solid #555; background:#222; color:#fff; min-width:140px;
+    touch-action:manipulation;
+  }
+  button.primary{border-color:var(--gold); color:var(--gold)}
+  button:disabled{opacity:.45}
+  input{
+    width:min(460px,100%); padding:14px 16px; border-radius:14px;
+    border:1px solid #555; background:#111; color:#fff; font-size:22px; text-align:center;
+  }
+  .marquee{
+    margin:10px auto 14px; padding:18px 22px; border-radius:22px;
+    border:1px solid rgba(255,215,0,.2);
+    box-shadow:0 10px 28px rgba(0,0,0,.35), inset 0 0 18px rgba(255,215,0,.12);
+    display:inline-flex; align-items:center; justify-content:center; position:relative;
+  }
+  .price{
+    font-size:64px; font-weight:1000; color:var(--gold);
+    text-shadow:0 0 14px rgba(255,215,0,.45);
+    letter-spacing:2px; display:flex; gap:10px; align-items:baseline; justify-content:center;
+    user-select:none;
+  }
+  .yen{font-size:52px}
+  .digits{font-variant-numeric: tabular-nums;}
+  .hint{margin-top:12px; color:var(--muted); font-size:12.5px; line-height:1.6; text-align:center;}
+  .tapzone{position:absolute; top:10px; right:10px; width:54px; height:54px; opacity:0;}
+  #bgVideo{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:-1; pointer-events:none;}
+  .lock{display:none; margin-top:8px; color:var(--gold); font-weight:900}
+  .lock.on{display:block}
+</style>
+</head>
+<body>
+
+<!-- Staff -->
+<div class="screen" id="staffScreen">
+  <div class="card">
+    <h1 class="title">お店用：金額セット</h1>
+    <p class="sub">金額を入力 → 「お客様画面へ」</p>
+    <div style="display:flex;justify-content:center">
+      <input id="targetInput" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" value="0">
+    </div>
+
+    <div class="row" id="presetRow" style="margin-top:12px">
+      <button type="button" class="primary preset" data-add="500">+500円</button>
+      <button type="button" class="primary preset" data-add="1000">+1,000円</button>
+      <button type="button" class="primary preset" data-add="3000">+3,000円</button>
+      <button type="button" class="primary preset" data-add="5000">+5,000円</button>
+      <button type="button" class="primary preset" data-add="10000">+10,000円</button>
+      <button type="button" class="primary preset" data-add="100000">+100,000円</button>
+      <button type="button" id="sameAsLast">前回と同じ</button>
+      <button type="button" id="clearInput">クリア</button>
+    </div>
+
+    <div class="row">
+      <button class="primary" id="goCustomer" type="button">お客様画面へ</button>
+    </div>
+
+    <div class="hint" id="staffMsg" style="margin-top:10px;color:#ffd700;font-weight:900"></div>
+    <div class="hint">
+      ・上限：<strong>1億（9桁）</strong><br>
+      ・お客様画面から戻る：右上（見えない場所）を<strong>5回タップ</strong>
+    </div>
+  </div>
+</div>
+
+<!-- Customer -->
+<div class="full" id="customerScreen" style="display:none; position:relative; overflow:hidden;">
+  <video id="bgVideo" autoplay muted loop playsinline preload="auto" aria-hidden="true">
+    <source src="background.mp4" type="video/mp4">
+  </video>
+
+  <div class="card">
+    <div class="tapzone" id="secretTap" title="secret"></div>
+
+    <h2 class="title">金額ルーレット</h2>
+    <p class="sub">STARTで回転、STOPで止まります</p>
+    <div class="lock" id="lockBadge">🔒 確定後ロック中（右上5回タップで解除）</div>
+
+    <div class="marquee">
+      <div class="price"><span class="yen">¥</span><span class="digits" id="digits">0</span><span class="yen" id="yenSuffix" style="display:none">円</span></div>
+    </div>
+
+    <div class="row">
+      <button class="primary" id="start" type="button">START</button>
+      <button id="stop" type="button" disabled>STOP</button>
+      <button id="again" type="button" disabled>次の方へ</button>
+    </div>
+
+    <div class="hint" id="customerMsg" style="margin-top:10px;color:#ffd700;font-weight:900"></div>
+    <div class="hint">※ 設定へ戻る：右上（見えない場所）を<strong>5回タップ</strong></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id)=>document.getElementById(id);
+
+  const staffScreen = $("staffScreen");
+  const customerScreen = $("customerScreen");
+  const targetInput = $("targetInput");
+  const presetRow = $("presetRow");
+  const staffMsg = $("staffMsg");
+  const goCustomer = $("goCustomer");
+
+  const digitsEl = $("digits");
+  const startBtn = $("start");
+  const stopBtn = $("stop");
+  const againBtn = $("again");
+  const lockBadge = $("lockBadge");
+  const secretTap = $("secretTap");
+  const customerMsg = $("customerMsg");
+
+  const STORAGE_KEY_LAST = "priceRoulette_lastTargetRaw";
+  const MAX = 999999999;
+
+  let target = 0;
+  let spinning = false;
+  let locked = false;
+  let timer = null;
+  let secretCount = 0;
+  let secretTimer = null;
+
+  const digitsOnly = (s)=>String(s).replace(/[^0-9]/g,"");
+  const fmt = (n)=>String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+  function setStaffText(t){ staffMsg.textContent = t || ""; }
+  function setCustomerText(t){ customerMsg.textContent = t || ""; }
+
+  function normalizeInput(){
+    let raw = digitsOnly(targetInput.value);
+    if(!raw) raw="0";
+    if(raw.length>9) raw = raw.slice(0,9);
+    let n = Number(raw);
+    if(!Number.isFinite(n)) n = 0;
+    if(n>MAX) n=MAX;
+    targetInput.value = fmt(n);
+    return n;
+  }
+
+  function addToInput(add){
+    const cur = Number(digitsOnly(targetInput.value)||"0");
+    let next = cur + add;
+    if(next>MAX) next=MAX;
+    targetInput.value = fmt(next);
+  }
+
+  // IMPORTANT: make taps/clicks reliable on iOS/iPadOS
+  function bindTap(el, fn){
+    if(!el) return;
+    el.addEventListener("pointerdown", (e)=>{ e.preventDefault(); fn(e); }, {passive:false});
+    el.addEventListener("click", (e)=>{ e.preventDefault(); fn(e); }, {passive:false});
+  }
+
+  // Staff preset buttons
+  bindTap(presetRow, (e)=>{
+    const btn = e.target.closest("button");
+    if(!btn) return;
+
+    if(btn.dataset.add){
+      addToInput(Number(btn.dataset.add));
+      setStaffText(`加算：+${btn.textContent.replace("+","")}`);
+      return;
+    }
+    if(btn.id==="sameAsLast"){
+      const last = Number(localStorage.getItem(STORAGE_KEY_LAST) || "0");
+      addToInput(last);
+      setStaffText("加算：前回と同じ");
+      return;
+    }
+    if(btn.id==="clearInput"){
+      targetInput.value = "0";
+      setStaffText("クリア");
+      return;
+    }
+  });
+
+  // Input formatting
+  targetInput.addEventListener("input", ()=>{ normalizeInput(); });
+
+  function showStaff(){
+    stopSpin();
+    customerScreen.style.display="none";
+    staffScreen.style.display="";
+    setCustomerText("");
+    secretCount=0;
+  }
+
+  function showCustomer(){
+    staffScreen.style.display="none";
+    customerScreen.style.display="";
+    prepareFromTarget();
+  }
+
+  bindTap(goCustomer, ()=>{
+    const n = normalizeInput();
+    localStorage.setItem(STORAGE_KEY_LAST, String(n));
+    showCustomer();
+  });
+
+  function setLock(on){
+    locked = !!on;
+    lockBadge.classList.toggle("on", locked);
+    updateUI();
+  }
+
+  function updateUI(){
+    startBtn.disabled = locked || spinning;
+    stopBtn.disabled = locked || !spinning;
+    againBtn.disabled = locked || spinning || !digitsEl.dataset.final;
+  }
+
+  function setDisplay(n){
+    digitsEl.textContent = fmt(n);
+  }
+
+  function prepareFromTarget(){
+    setLock(false);
+    target = normalizeInput();
+    digitsEl.dataset.final = "";
+    setDisplay(0);
+    updateUI();
+  }
+
+  function startSpin(){
+    if(spinning || locked) return;
+    digitsEl.dataset.final = "";
+    spinning = true;
+    updateUI();
+
+    // simple spin: show random-ish number quickly
+    timer = setInterval(()=>{
+      const r = Math.floor(Math.random() * Math.max(10, target+1));
+      setDisplay(r);
+    }, 80);
+  }
+
+  function stopSpin(){
+    if(timer){ clearInterval(timer); timer=null; }
+    spinning = false;
+    updateUI();
+  }
+
+  function stopAndFix(){
+    if(!spinning) return;
+    stopSpin();
+    setDisplay(target);
+    digitsEl.dataset.final = "1";
+    // lock after 2 seconds (same feel)
+    setTimeout(()=>{ setLock(true); }, 2000);
+    updateUI();
+  }
+
+  bindTap(startBtn, ()=>{ prepareFromTarget(); startSpin(); });
+  bindTap(stopBtn, ()=>{ stopAndFix(); });
+  bindTap(againBtn, ()=>{ prepareFromTarget(); });
+
+  // secret 5 taps
+  bindTap(secretTap, ()=>{
+    secretCount++;
+    if(secretTimer) clearTimeout(secretTimer);
+    secretTimer = setTimeout(()=>{ secretCount=0; }, 2500);
+    if(secretCount>=5){
+      secretCount=0;
+      if(locked){
+        setLock(false);
+        prepareFromTarget();
+      }else{
+        showStaff();
+      }
+    }
+  });
+
+  // initial
+  normalizeInput();
+  updateUI();
+})();
+</script>
+</body>
+</html>
