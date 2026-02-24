@@ -224,20 +224,8 @@
     z-index:0;
     pointer-events:none;
     filter: saturate(1.05) contrast(1.05);
-  
-    object-position:center;
-    background:#000;
   }
-  
-  /* iPad/タブレット：背景の拡大（クロップ）を抑える */
-  @media (max-aspect-ratio: 4/3) {
-    #bgVideo{
-      object-fit: contain; /* 画面に収める（余白が出る） */
-      background:#000;
-    }
-  }
-
-#customerScreen .customerCard{
+  #customerScreen .customerCard{
     position:relative;
     z-index:1;
     background: rgba(20,20,20,0.68);
