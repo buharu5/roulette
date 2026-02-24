@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>金額ルーレット v40（ボタン安定／¥移動は1回だけ／2秒ためて円確定）</title>
 <style>
   :root{ --bg:#0f0f0f; --panel:#1c1c1c; --gold:#ffd700; --muted:#aaa; }
@@ -94,6 +94,13 @@
     color:#fff;
     min-width:140px;
   }
+
+  button, #presetRow button, #goCustomer, #start, #stop, #again{
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
   button.primary{ border-color:var(--gold); color:var(--gold); }
   button:disabled{ opacity:0.45; }
 
@@ -231,14 +238,6 @@
     background: rgba(20,20,20,0.68);
     backdrop-filter: blur(2px);
   }
-
-
-  button, .preset, .tapzone, .marqueeFrame, .price, .digits, .yen{
-    -webkit-user-select:none;
-    user-select:none;
-    -webkit-touch-callout:none;
-  }
-  button{ touch-action: manipulation; }
 
 </style>
 </head>
@@ -477,28 +476,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
   const marqueeFrame = document.getElementById('marqueeFrame');
 
-  // iOS/iPadOS: touch -> click の二重発火を防ぐ（“2回押された感じ”対策）
-  function bindTap(el, fn){
-    if(!el) return;
-    let lastTouch = 0;
-    el.addEventListener("touchstart", (e) => {
-      lastTouch = Date.now();
-      // 長押しで文字選択/メニューを出さない
-      if(e && e.preventDefault) e.preventDefault();
-      fn(e);
-    }, {passive:false});
-    el.addEventListener("click", (e) => {
-      const now = Date.now();
-      if(now - lastTouch < 750){
-        if(e && e.preventDefault) e.preventDefault();
-        if(e && e.stopPropagation) e.stopPropagation();
-        return;
-      }
-      fn(e);
-    }, {passive:false});
-  }
-
-
   // staff input formatting (0 overwrite + clamp)
   function formatTargetInput(){
     let raw = digitsOnly(targetInput.value);
@@ -589,19 +566,41 @@ window.addEventListener('DOMContentLoaded', () => {
     handlePresetButton(btn);
   }
 
-  if(presetRow){
-    // delegate
-    ["click","touchstart","pointerdown","mousedown"].forEach(type => {
-      presetRow.addEventListener(type, onPresetEvent, {passive:false});
-    });
-
-    // direct (in case delegate is blocked)
-    presetRow.querySelectorAll("button").forEach(b => {
-      ["click","touchstart","pointerdown","mousedown"].forEach(type => {
-        b.addEventListener(type, (ev)=>{ onPresetEvent(ev); }, {passive:false});
-      });
-    });
+  
+  // iPad/iPhone 対策：touchstart の後に click が続くと2回発火するのでガード
+  let __lastTouchTs = 0;
+  function __ignoreGhostClick(ev){
+    if(ev && ev.type === "touchstart"){
+      __lastTouchTs = Date.now();
+      return false;
+    }
+    if(ev && ev.type === "click" && (Date.now() - __lastTouchTs) < 700){
+      return true;
+    }
+    return false;
   }
+
+  if(presetRow){
+    // 長押しで「コピー」等が出るのを抑止
+    presetRow.addEventListener("contextmenu", (e)=>e.preventDefault());
+
+    // まず touchstart（iOS優先）
+    presetRow.addEventListener("touchstart", (ev)=>{
+      if(__ignoreGhostClick(ev)) return;
+      onPresetEvent(ev);
+    }, {passive:false});
+
+    // クリック（PC/一部環境）
+    presetRow.addEventListener("click", (ev)=>{
+      if(__ignoreGhostClick(ev)){
+        ev.preventDefault();
+        ev.stopPropagation();
+        return;
+      }
+      onPresetEvent(ev);
+    }, {passive:false});
+  }
+
 // screens
   let secretCount = 0;
   let secretTimer = null;
@@ -618,14 +617,14 @@ window.addEventListener('DOMContentLoaded', () => {
     prepareFromTarget();
   }
 
-  bindTap(goCustomerBtn, () => {
+  goCustomerBtn.addEventListener("click", () => {
     formatTargetInput();
     const raw = digitsOnly(targetInput.value);
     localStorage.setItem("priceRoulette_lastTargetRaw", raw.length ? raw : "0");
     showCustomer();
   });
 
-  bindTap(secretTap, () => {
+  secretTap.addEventListener("click", () => {
     secretCount++;
     if(secretTimer) clearTimeout(secretTimer);
     secretTimer = setTimeout(()=>{ secretCount = 0; }, 2500);
@@ -840,7 +839,7 @@ window.addEventListener('DOMContentLoaded', () => {
     setUI();
   }
 
-  bindTap(startBtn, () => {
+  startBtn.addEventListener("click", () => {
     if(stopping || lockedAfterFinish) return;
     // instant reset before spinning
     prepareFromTarget();
@@ -869,7 +868,7 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  bindTap(stopBtn, async () => {
+  stopBtn.addEventListener("click", async () => {
     if(!spinning || stopping) return;
     stopping=true;
     setUI();
@@ -933,10 +932,8 @@ window.addEventListener('DOMContentLoaded', () => {
     /* no auto reset */
   });
 
-  bindTap(againBtn, () => prepareFromTarget());
+  againBtn.addEventListener("click", () => prepareFromTarget());
 
-
-  document.addEventListener('contextmenu', (e)=>{ if(e.target && e.target.closest && e.target.closest('button')){ e.preventDefault(); } }, {passive:false});
   // init
   formatTargetInput();
   setUI();
