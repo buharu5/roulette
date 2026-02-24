@@ -302,7 +302,6 @@
       <button class="primary" id="start" type="button">START</button>
       <button id="stop" type="button" disabled>STOP</button>
       <button id="again" type="button" disabled>次の方へ</button>
-      <button class="primary" id="voiceOn" type="button">音声ON</button>
     </div>
 
     <div class="finalOverlay" id="finalOverlay">
@@ -316,6 +315,16 @@
 
 <script>
 window.addEventListener('DOMContentLoaded', () => {
+  // iPad Safari 自動音声有効化（最初のタップで1回だけ実行）
+  document.addEventListener("pointerdown", () => {
+    try{
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(" ");
+      u.lang = "ja-JP";
+      speechSynthesis.speak(u);
+    }catch(e){}
+  }, { once:true });
+
 
   // iOS: prevent long-press context menu on buttons (best-effort)
   document.addEventListener("contextmenu", (e) => {
@@ -338,7 +347,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // speech
   function speak(text){
-    if(!speechEnabled) return;
     if(!("speechSynthesis" in window)) return;
     try{
       speechSynthesis.cancel();
@@ -349,6 +357,7 @@ window.addEventListener('DOMContentLoaded', () => {
       u.volume = 1.0;
       speechSynthesis.speak(u);
     }catch(e){}
+  }catch(e){}
   }
   const placeSpeakMap = {
     0: "1",
@@ -479,35 +488,7 @@ window.addEventListener('DOMContentLoaded', () => {
   const startBtn = document.getElementById("start");
   const stopBtn = document.getElementById("stop");
   const againBtn = document.getElementById("again");
-  const voiceOnBtn = document.getElementById("voiceOn");
-
-  // --- Speech enable (iPad Safari対策) ---
-  let speechEnabled = false;
-  function enableSpeech(){
-    if(!("speechSynthesis" in window)) return false;
-    try{
-      speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance("音声を有効にしました");
-      u.lang = "ja-JP";
-      u.rate = 1.05;
-      u.pitch = 1.15;
-      u.volume = 1.0;
-      speechSynthesis.speak(u);
-      speechEnabled = true;
-      if(voiceOnBtn){
-        voiceOnBtn.textContent = "音声OK";
-        voiceOnBtn.disabled = true;
-      }
-      return true;
-    }catch(e){
-      return false;
-    }
-  }
-  if(voiceOnBtn){
-    voiceOnBtn.addEventListener("click", () => {
-      enableSpeech();
-    });
-  }
+  
 
 
   const resultLine = document.getElementById("resultLine");
