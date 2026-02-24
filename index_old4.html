@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>金額ルーレット v40（ボタン安定／¥移動は1回だけ／2秒ためて円確定）</title>
 <style>
   :root{ --bg:#0f0f0f; --panel:#1c1c1c; --gold:#ffd700; --muted:#aaa; }
@@ -233,13 +233,12 @@
   }
 
 
-  /* iOS: make buttons feel like buttons (no text selection / callout) */
-  button, .preset, #presetRow button, .tapzone, .title, .sub, .hint, .price, .digits, .yen{
-    -webkit-user-select: none;
-    user-select: none;
-    -webkit-touch-callout: none;
+  button, .preset, .tapzone, .marqueeFrame, .price, .digits, .yen{
+    -webkit-user-select:none;
+    user-select:none;
+    -webkit-touch-callout:none;
   }
-  #presetRow button{ touch-action: manipulation; }
+  button{ touch-action: manipulation; }
 
 </style>
 </head>
@@ -255,14 +254,14 @@
     </div>
 
     <div class="row" id="presetRow" style="margin-top:12px;">
-      <button type="button" class="primary preset" data-val="500" onclick="window.__preset && window.__preset(500)">500円</button>
-      <button type="button" class="primary preset" data-val="1000" onclick="window.__preset && window.__preset(1000)">1,000円</button>
-      <button type="button" class="primary preset" data-val="3000" onclick="window.__preset && window.__preset(3000)">3,000円</button>
-      <button type="button" class="primary preset" data-val="5000" onclick="window.__preset && window.__preset(5000)">5,000円</button>
-      <button type="button" class="primary preset" data-val="10000" onclick="window.__preset && window.__preset(10000)">10,000円</button>
+      <button type="button" class="primary preset" data-val="500" onclick="window.__preset && window.__preset(500)" onclick="window.__preset && window.__preset(500)">500円</button>
+      <button type="button" class="primary preset" data-val="1000" onclick="window.__preset && window.__preset(1000)" onclick="window.__preset && window.__preset(1000)">1,000円</button>
+      <button type="button" class="primary preset" data-val="3000" onclick="window.__preset && window.__preset(3000)" onclick="window.__preset && window.__preset(3000)">3,000円</button>
+      <button type="button" class="primary preset" data-val="5000" onclick="window.__preset && window.__preset(5000)" onclick="window.__preset && window.__preset(5000)">5,000円</button>
+      <button type="button" class="primary preset" data-val="10000" onclick="window.__preset && window.__preset(10000)" onclick="window.__preset && window.__preset(10000)">10,000円</button>
             <button type="button" class="primary preset" data-val="100000" onclick="window.__preset && window.__preset(100000)">100,000円</button>
-<button type="button" id="sameAsLast" onclick="window.__presetLast && window.__presetLast()">前回と同じ</button>
-      <button type="button" id="clearInput" onclick="window.__presetClear && window.__presetClear()">クリア</button>
+<button type="button" id="sameAsLast" onclick="window.__presetLast && window.__presetLast()" onclick="window.__presetLast && window.__presetLast()">前回と同じ</button>
+      <button type="button" id="clearInput" onclick="window.__presetClear && window.__presetClear()" onclick="window.__presetClear && window.__presetClear()">クリア</button>
     </div>
 
     <div class="row">
@@ -315,13 +314,6 @@
 
 <script>
 window.addEventListener('DOMContentLoaded', () => {
-
-  // iOS: prevent long-press context menu on buttons (best-effort)
-  document.addEventListener("contextmenu", (e) => {
-    const btn = e.target && e.target.closest ? e.target.closest("button") : null;
-    if(btn){ e.preventDefault(); }
-  }, {passive:false});
-
 
   const DEFAULT_DISPLAY_LEN = 10;
   const MAX_INPUT_DIGITS = 9;
@@ -485,6 +477,28 @@ window.addEventListener('DOMContentLoaded', () => {
 
   const marqueeFrame = document.getElementById('marqueeFrame');
 
+  // iOS/iPadOS: touch -> click の二重発火を防ぐ（“2回押された感じ”対策）
+  function bindTap(el, fn){
+    if(!el) return;
+    let lastTouch = 0;
+    el.addEventListener("touchstart", (e) => {
+      lastTouch = Date.now();
+      // 長押しで文字選択/メニューを出さない
+      if(e && e.preventDefault) e.preventDefault();
+      fn(e);
+    }, {passive:false});
+    el.addEventListener("click", (e) => {
+      const now = Date.now();
+      if(now - lastTouch < 750){
+        if(e && e.preventDefault) e.preventDefault();
+        if(e && e.stopPropagation) e.stopPropagation();
+        return;
+      }
+      fn(e);
+    }, {passive:false});
+  }
+
+
   // staff input formatting (0 overwrite + clamp)
   function formatTargetInput(){
     let raw = digitsOnly(targetInput.value);
@@ -545,7 +559,50 @@ window.addEventListener('DOMContentLoaded', () => {
   targetInput.addEventListener("input", formatTargetInput);
   targetInput.addEventListener("blur", formatTargetInput);
 
-  // screens
+  // presets（デリゲート＋ボタン直付けの二段構えで確実に）
+  function handlePresetButton(btn){
+    if(!btn) return;
+    const val = btn.getAttribute("data-val");
+    if(val !== null){
+      setTargetRaw(val);
+      setStaffMsg(`セット：${btn.textContent}`);
+      return;
+    }
+    if(btn.id === "sameAsLast"){
+      const last = localStorage.getItem(STORAGE_KEY_LAST) || "0";
+      setTargetRaw(last);
+      setStaffMsg("セット：前回と同じ");
+      return;
+    }
+    if(btn.id === "clearInput"){
+      setTargetRaw("0");
+      setStaffMsg("クリア");
+      return;
+    }
+  }
+
+  function onPresetEvent(ev){
+    if(ev && ev.preventDefault) ev.preventDefault();
+    if(ev && ev.stopPropagation) ev.stopPropagation();
+    targetInput.blur();
+    const btn = ev.target && ev.target.closest ? ev.target.closest("button") : null;
+    handlePresetButton(btn);
+  }
+
+  if(presetRow){
+    // delegate
+    ["click","touchstart","pointerdown","mousedown"].forEach(type => {
+      presetRow.addEventListener(type, onPresetEvent, {passive:false});
+    });
+
+    // direct (in case delegate is blocked)
+    presetRow.querySelectorAll("button").forEach(b => {
+      ["click","touchstart","pointerdown","mousedown"].forEach(type => {
+        b.addEventListener(type, (ev)=>{ onPresetEvent(ev); }, {passive:false});
+      });
+    });
+  }
+// screens
   let secretCount = 0;
   let secretTimer = null;
 
@@ -561,14 +618,14 @@ window.addEventListener('DOMContentLoaded', () => {
     prepareFromTarget();
   }
 
-  goCustomerBtn.addEventListener("click", () => {
+  bindTap(goCustomerBtn, () => {
     formatTargetInput();
     const raw = digitsOnly(targetInput.value);
     localStorage.setItem("priceRoulette_lastTargetRaw", raw.length ? raw : "0");
     showCustomer();
   });
 
-  secretTap.addEventListener("click", () => {
+  bindTap(secretTap, () => {
     secretCount++;
     if(secretTimer) clearTimeout(secretTimer);
     secretTimer = setTimeout(()=>{ secretCount = 0; }, 2500);
@@ -783,7 +840,7 @@ window.addEventListener('DOMContentLoaded', () => {
     setUI();
   }
 
-  startBtn.addEventListener("click", () => {
+  bindTap(startBtn, () => {
     if(stopping || lockedAfterFinish) return;
     // instant reset before spinning
     prepareFromTarget();
@@ -812,7 +869,7 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  stopBtn.addEventListener("click", async () => {
+  bindTap(stopBtn, async () => {
     if(!spinning || stopping) return;
     stopping=true;
     setUI();
@@ -876,8 +933,10 @@ window.addEventListener('DOMContentLoaded', () => {
     /* no auto reset */
   });
 
-  againBtn.addEventListener("click", () => prepareFromTarget());
+  bindTap(againBtn, () => prepareFromTarget());
 
+
+  document.addEventListener('contextmenu', (e)=>{ if(e.target && e.target.closest && e.target.closest('button')){ e.preventDefault(); } }, {passive:false});
   // init
   formatTargetInput();
   setUI();
