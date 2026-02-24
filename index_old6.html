@@ -220,12 +220,24 @@
     inset:0;
     width:100%;
     height:100%;
-    object-fit:cover;
+    object-fit:contain;   /* ← cover から変更 */
     z-index:0;
     pointer-events:none;
     filter: saturate(1.05) contrast(1.05);
+  
+    object-position:center;
+    background:#000;
   }
-  #customerScreen .customerCard{
+  
+  /* iPad/タブレット：背景の拡大（クロップ）を抑える */
+  @media (max-aspect-ratio: 4/3) {
+    #bgVideo{
+      object-fit: contain; /* 画面に収める（余白が出る） */
+      background:#000;
+    }
+  }
+
+#customerScreen .customerCard{
     position:relative;
     z-index:1;
     background: rgba(20,20,20,0.68);
@@ -302,7 +314,6 @@
       <button class="primary" id="start" type="button">START</button>
       <button id="stop" type="button" disabled>STOP</button>
       <button id="again" type="button" disabled>次の方へ</button>
-      <button class="primary" id="voiceOn" type="button">音声ON</button>
     </div>
 
     <div class="finalOverlay" id="finalOverlay">
@@ -316,6 +327,16 @@
 
 <script>
 window.addEventListener('DOMContentLoaded', () => {
+
+  // ★ 音を有効化（iPad対策）
+document.addEventListener("pointerdown", () => {
+  try { 
+    getAudio(); 
+    const u = new SpeechSynthesisUtterance(" ");
+    u.lang = "ja-JP";
+    speechSynthesis.speak(u);
+  } catch(e) {}
+}, { once:true });
 
   // iOS: prevent long-press context menu on buttons (best-effort)
   document.addEventListener("contextmenu", (e) => {
@@ -338,17 +359,14 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // speech
   function speak(text){
-    if(!speechEnabled) return;
     if(!("speechSynthesis" in window)) return;
-    try{
-      speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = "ja-JP";
-      u.rate = 1.15;
-      u.pitch = 1.15;
-      u.volume = 1.0;
-      speechSynthesis.speak(u);
-    }catch(e){}
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "ja-JP";
+    u.rate = 1.15;
+    u.pitch = 1.15;
+    u.volume = 1.0;
+    speechSynthesis.speak(u);
   }
   const placeSpeakMap = {
     0: "1",
@@ -479,36 +497,6 @@ window.addEventListener('DOMContentLoaded', () => {
   const startBtn = document.getElementById("start");
   const stopBtn = document.getElementById("stop");
   const againBtn = document.getElementById("again");
-  const voiceOnBtn = document.getElementById("voiceOn");
-
-  // --- Speech enable (iPad Safari対策) ---
-  let speechEnabled = false;
-  function enableSpeech(){
-    if(!("speechSynthesis" in window)) return false;
-    try{
-      speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance("音声を有効にしました");
-      u.lang = "ja-JP";
-      u.rate = 1.05;
-      u.pitch = 1.15;
-      u.volume = 1.0;
-      speechSynthesis.speak(u);
-      speechEnabled = true;
-      if(voiceOnBtn){
-        voiceOnBtn.textContent = "音声OK";
-        voiceOnBtn.disabled = true;
-      }
-      return true;
-    }catch(e){
-      return false;
-    }
-  }
-  if(voiceOnBtn){
-    voiceOnBtn.addEventListener("click", () => {
-      enableSpeech();
-    });
-  }
-
 
   const resultLine = document.getElementById("resultLine");
   const overlay = document.getElementById("finalOverlay");
