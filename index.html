@@ -328,6 +328,11 @@
 <script>
 window.addEventListener('DOMContentLoaded', () => {
 
+  // ★ 音を有効化（iPad対策）
+  document.addEventListener("pointerdown", () => {
+    try { getAudio(); } catch(e) {}
+  }, { once:true });
+
   // iOS: prevent long-press context menu on buttons (best-effort)
   document.addEventListener("contextmenu", (e) => {
     const btn = e.target && e.target.closest ? e.target.closest("button") : null;
