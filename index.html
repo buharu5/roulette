@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
 <title>金額ルーレット v40（ボタン安定／¥移動は1回だけ／2秒ためて円確定）</title>
 <style>
   :root{ --bg:#0f0f0f; --panel:#1c1c1c; --gold:#ffd700; --muted:#aaa; }
@@ -220,10 +220,12 @@
     inset:0;
     width:100%;
     height:100%;
-    object-fit:cover;
+    object-fit:contain;   /* ←拡大しない */
+    background:#000;
     z-index:0;
     pointer-events:none;
     filter: saturate(1.05) contrast(1.05);
+    object-position:center;
   }
   #customerScreen .customerCard{
     position:relative;
@@ -232,14 +234,15 @@
     backdrop-filter: blur(2px);
   }
 
-
-  /* iOS: make buttons feel like buttons (no text selection / callout) */
-  button, .preset, #presetRow button, .tapzone, .title, .sub, .hint, .price, .digits, .yen{
-    -webkit-user-select: none;
-    user-select: none;
-    -webkit-touch-callout: none;
+  /* iPhone/iPad full-screen & safe-area */
+  html, body { height: 100%; }
+  body{
+    padding-top: env(safe-area-inset-top);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
   }
-  #presetRow button{ touch-action: manipulation; }
+  .full{ min-height: 100svh; }
 
 </style>
 </head>
@@ -260,8 +263,8 @@
       <button type="button" class="primary preset" data-val="3000" onclick="window.__preset && window.__preset(3000)">3,000円</button>
       <button type="button" class="primary preset" data-val="5000" onclick="window.__preset && window.__preset(5000)">5,000円</button>
       <button type="button" class="primary preset" data-val="10000" onclick="window.__preset && window.__preset(10000)">10,000円</button>
-            <button type="button" class="primary preset" data-val="100000" onclick="window.__preset && window.__preset(100000)">100,000円</button>
-<button type="button" id="sameAsLast" onclick="window.__presetLast && window.__presetLast()">前回と同じ</button>
+      <button type="button" class="primary preset" data-val="100000" onclick="window.__preset && window.__preset(100000)">100,000円</button>
+      <button type="button" id="sameAsLast" onclick="window.__presetLast && window.__presetLast()">前回と同じ</button>
       <button type="button" id="clearInput" onclick="window.__presetClear && window.__presetClear()">クリア</button>
     </div>
 
@@ -286,15 +289,15 @@
 
     <h2 class="title">金額ルーレット</h2>
     <p class="sub">STARTで回転、STOPで右の桁から止まります</p>
-<div class="hint" id="lockBadge" style="display:none;margin-top:8px;color:#ffd700;font-weight:900;">🔒 確定後ロック中（右上5回タップで解除）</div>
+    <div class="hint" id="lockBadge" style="display:none;margin-top:8px;color:#ffd700;font-weight:900;">🔒 確定後ロック中（右上5回タップで解除）</div>
 
     <div class="marqueeFrame" id="marqueeFrame">
-    <div class="price">
-      <span class="yen" id="yenPrefix">¥</span>
-      <span class="digits" id="digits"></span>
-      <span class="yen" id="yenSuffix" style="display:none;">円</span>
+      <div class="price">
+        <span class="yen" id="yenPrefix">¥</span>
+        <span class="digits" id="digits"></span>
+        <span class="yen" id="yenSuffix" style="display:none;">円</span>
+      </div>
     </div>
-  </div>
 
     <div class="resultLine" id="resultLine"></div>
 
@@ -308,30 +311,19 @@
       <div class="finalText" id="finalText"></div>
     </div>
 
-    <div class="hint" id="staffMsg" style="margin-top:10px; color:#ffd700; font-weight:900;"></div>
+    <div class="hint" id="staffMsg2" style="margin-top:10px; color:#ffd700; font-weight:900;"></div>
     <div class="hint">※ 設定へ戻る：右上（見えない場所）を<strong>5回タップ</strong></div>
   </div>
 </div>
 
 <script>
 window.addEventListener('DOMContentLoaded', () => {
-  // iPad Safari 自動音声有効化（最初のタップで1回だけ実行）
-  document.addEventListener("pointerdown", () => {
-    try{
-      speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(" ");
-      u.lang = "ja-JP";
-      speechSynthesis.speak(u);
-    }catch(e){}
-  }, { once:true });
-
 
   // iOS: prevent long-press context menu on buttons (best-effort)
   document.addEventListener("contextmenu", (e) => {
     const btn = e.target && e.target.closest ? e.target.closest("button") : null;
     if(btn){ e.preventDefault(); }
   }, {passive:false});
-
 
   const DEFAULT_DISPLAY_LEN = 10;
   const MAX_INPUT_DIGITS = 9;
@@ -345,20 +337,46 @@ window.addEventListener('DOMContentLoaded', () => {
     return t.length ? t : "0";
   };
 
+  // ----------------------
   // speech
+  // ----------------------
   function speak(text){
     if(!("speechSynthesis" in window)) return;
-    try{
-      speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = "ja-JP";
-      u.rate = 1.15;
-      u.pitch = 1.15;
-      u.volume = 1.0;
-      speechSynthesis.speak(u);
-    }catch(e){}
-  }catch(e){}
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "ja-JP";
+    u.rate = 1.15;
+    u.pitch = 1.15;
+    u.volume = 1.0;
+    speechSynthesis.speak(u);
   }
+
+  // ★ STARTを押した瞬間に「音声を使える状態」にする（iPad Safari対策）
+  let voicePrimed = false;
+  function primeVoice(){
+    if(voicePrimed) return;
+    voicePrimed = true;
+
+    // 1) WebAudio をユーザー操作内で起動（効果音用）
+    try { getAudio(); } catch(e) {}
+
+    // 2) SpeechSynthesis をユーザー操作内で“最初に一回”動かす
+    //    （無音の短い発話→すぐキャンセル）
+    try{
+      if("speechSynthesis" in window){
+        // voices warm-up (iOS対策)
+        speechSynthesis.getVoices();
+        const u = new SpeechSynthesisUtterance(" ");
+        u.lang = "ja-JP";
+        u.volume = 0;   // 無音
+        u.rate = 1;
+        u.pitch = 1;
+        speechSynthesis.speak(u);
+        setTimeout(()=>{ try{ speechSynthesis.cancel(); }catch(e){} }, 60);
+      }
+    }catch(e){}
+  }
+
   const placeSpeakMap = {
     0: "1",
     1: "10",
@@ -370,7 +388,7 @@ window.addEventListener('DOMContentLoaded', () => {
     7: "千万",
     8: "1億"
   };
-  
+
   // ----------------------
   // SFX (WebAudio synth)
   // ----------------------
@@ -426,12 +444,9 @@ window.addEventListener('DOMContentLoaded', () => {
     src.stop(t + dur + 0.01);
   }
 
-  // START: drumroll-ish (rapid low clicks)
   function startDrumroll(){
     stopDrumroll();
-    const ctx = getAudio();
     drumTimer = setInterval(() => {
-      // mixed click + noise
       playTone(120 + Math.random()*40, 0.03, "square", 0.03);
       if(Math.random() < 0.35) playNoise(0.04, 0.015, 800);
     }, 70);
@@ -443,21 +458,12 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Digit stop: small click
-  function sfxClick(){
-    playTone(560 + Math.random()*80, 0.045, "square", 0.035);
-  }
-
-  // ¥ 'bashi': stronger hit
+  function sfxClick(){ playTone(560 + Math.random()*80, 0.045, "square", 0.035); }
   function sfxBashi(){
     playTone(180, 0.08, "sawtooth", 0.08);
     playNoise(0.10, 0.04, 700);
   }
-
-  // pre-speak murmur: short low noise
-  function sfxMurmur(){
-    playNoise(0.35, 0.02, 180);
-  }
+  function sfxMurmur(){ playNoise(0.35, 0.02, 180); }
 
   function speakPlace(indexFromRight){
     const t = placeSpeakMap[indexFromRight];
@@ -470,67 +476,49 @@ window.addEventListener('DOMContentLoaded', () => {
   const targetInput = document.getElementById("targetInput");
   const goCustomerBtn = document.getElementById("goCustomer");
   const presetRow = document.getElementById("presetRow");
-  const sameAsLastBtn = document.getElementById("sameAsLast");
-  const clearInputBtn = document.getElementById("clearInput");
-
   const staffMsg = document.getElementById("staffMsg");
-  function setStaffMsg(t){ if(staffMsg) staffMsg.textContent = t || ""; }
-
-
   const lockBadge = document.getElementById("lockBadge");
-
-  const STORAGE_KEY_LAST = "priceRoulette_lastTargetRaw";
-
-
   const secretTap = document.getElementById("secretTap");
-
   const digitsRoot = document.getElementById("digits");
   const startBtn = document.getElementById("start");
   const stopBtn = document.getElementById("stop");
   const againBtn = document.getElementById("again");
-  
-
-
   const resultLine = document.getElementById("resultLine");
   const overlay = document.getElementById("finalOverlay");
   const overlayText = document.getElementById("finalText");
-
   const yenPrefix = document.getElementById("yenPrefix");
   const yenSuffix = document.getElementById("yenSuffix");
-
   const marqueeFrame = document.getElementById('marqueeFrame');
 
-  // staff input formatting (0 overwrite + clamp)
+  function setStaffMsg(t){ if(staffMsg) staffMsg.textContent = t || ""; }
+
+  const STORAGE_KEY_LAST = "priceRoulette_lastTargetRaw";
+
+  // staff input formatting
   function formatTargetInput(){
     let raw = digitsOnly(targetInput.value);
-    if(raw.length === 0){
-      targetInput.value = "0";
-      return;
-    }
+    if(raw.length === 0){ targetInput.value = "0"; return; }
+    if(raw.length > MAX_INPUT_DIGITS) raw = raw.slice(0, MAX_INPUT_DIGITS);
+    if(raw.length === MAX_INPUT_DIGITS && raw > MAX_VALUE_RAW) raw = MAX_VALUE_RAW;
+    targetInput.value = commaString(raw);
+  }
   function setTargetRaw(rawDigits){
-    // rawDigits: digits only
     targetInput.value = String(rawDigits || "0");
     formatTargetInput();
   }
-  // expose for inline handlers (fallback for environments where delegated events misbehave)
-  // expose for inline handlers (加算モード)
+
+  // 加算モード
   function __addToInput(addVal){
     const curRaw = (String(targetInput.value || "").replace(/[^0-9]/g,"")) || "0";
     const cur = Number(curRaw);
     const add = Number(addVal || 0);
     let next = cur + add;
-
-    // 上限：9桁（1億未満まで）
     const MAX = 999999999;
     if(next > MAX) next = MAX;
-
     setTargetRaw(String(next));
   }
 
-  window.__preset = (val) => {
-    __addToInput(val);
-    setStaffMsg(`加算：+${commaString(String(val))}円`);
-  };
+  window.__preset = (val) => { __addToInput(val); setStaffMsg(`加算：+${commaString(String(val))}円`); };
   window.__presetLast = () => {
     const last = localStorage.getItem(STORAGE_KEY_LAST) || "0";
     __addToInput(last);
@@ -538,11 +526,6 @@ window.addEventListener('DOMContentLoaded', () => {
   };
   window.__presetClear = () => { setTargetRaw("0"); setStaffMsg("クリア"); };
 
-
-    if(raw.length > MAX_INPUT_DIGITS) raw = raw.slice(0, MAX_INPUT_DIGITS);
-    if(raw.length === MAX_INPUT_DIGITS && raw > MAX_VALUE_RAW) raw = MAX_VALUE_RAW;
-    targetInput.value = commaString(raw);
-  }
   targetInput.addEventListener("beforeinput", (e) => {
     if(e.inputType === "insertText" && e.data && /^\d$/.test(e.data)){
       const curRaw = digitsOnly(targetInput.value);
@@ -559,6 +542,37 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   targetInput.addEventListener("input", formatTargetInput);
   targetInput.addEventListener("blur", formatTargetInput);
+
+  // presets (robust)
+  function handlePresetButton(btn){
+    if(!btn) return;
+    const val = btn.getAttribute("data-val");
+    if(val !== null){
+      window.__preset(Number(val));
+      return;
+    }
+    if(btn.id === "sameAsLast"){ window.__presetLast(); return; }
+    if(btn.id === "clearInput"){ window.__presetClear(); return; }
+  }
+
+  function onPresetEvent(ev){
+    if(ev && ev.preventDefault) ev.preventDefault();
+    if(ev && ev.stopPropagation) ev.stopPropagation();
+    targetInput.blur();
+    const btn = ev.target && ev.target.closest ? ev.target.closest("button") : null;
+    handlePresetButton(btn);
+  }
+
+  if(presetRow){
+    ["click","touchstart","pointerdown","mousedown"].forEach(type => {
+      presetRow.addEventListener(type, onPresetEvent, {passive:false});
+    });
+    presetRow.querySelectorAll("button").forEach(b => {
+      ["click","touchstart","pointerdown","mousedown"].forEach(type => {
+        b.addEventListener(type, (ev)=>{ onPresetEvent(ev); }, {passive:false});
+      });
+    });
+  }
 
   // screens
   let secretCount = 0;
@@ -579,7 +593,7 @@ window.addEventListener('DOMContentLoaded', () => {
   goCustomerBtn.addEventListener("click", () => {
     formatTargetInput();
     const raw = digitsOnly(targetInput.value);
-    localStorage.setItem("priceRoulette_lastTargetRaw", raw.length ? raw : "0");
+    localStorage.setItem(STORAGE_KEY_LAST, raw.length ? raw : "0");
     showCustomer();
   });
 
@@ -590,7 +604,6 @@ window.addEventListener('DOMContentLoaded', () => {
     if(secretCount >= 5){
       secretCount = 0;
       if(lockedAfterFinish){
-        // 店員解除（その場で初期状態に戻す）
         setLock(false);
         prepareFromTarget();
       }else{
@@ -663,7 +676,6 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // keep layout, blank left side
   function blankLeftDigits(endIdx){
     for(let i=0;i<digitElems.length;i++){
       digitElems[i].style.opacity = (i < endIdx) ? "0" : "1";
@@ -715,8 +727,6 @@ window.addEventListener('DOMContentLoaded', () => {
     yenPrefix.style.transform = `translateX(${targetX}px)`;
   }
 
-  function currencyFinalMode(){ /* unused */ }
-
   // run state
   let displayLen = DEFAULT_DISPLAY_LEN;
   let targetRaw = "0";
@@ -737,7 +747,6 @@ window.addEventListener('DOMContentLoaded', () => {
     setUI();
   }
 
-
   function setUI(){
     const locked = lockedAfterFinish;
     startBtn.disabled = locked || spinning || stopping;
@@ -745,19 +754,6 @@ window.addEventListener('DOMContentLoaded', () => {
     againBtn.disabled = locked || (!finished) || spinning || stopping;
   }
   function hideResult(){ resultLine.classList.remove("on"); }
-  function showResult(finalStr){
-    resultLine.textContent = `鑑定結果：${finalStr}円です！`;
-    resultLine.classList.add("on");
-  }
-  function showDon(finalStr){
-    overlayText.textContent = `¥${finalStr}`;
-    overlay.classList.add("on");
-    overlayText.classList.remove("don");
-    void overlayText.offsetWidth;
-    overlayText.classList.add("don");
-    setTimeout(()=>overlay.classList.remove("on"), 1100);
-  }
-  function scheduleAutoReset(){ /* disabled */ }
 
   function prepareFromTarget(){
     if(autoResetTimer) clearTimeout(autoResetTimer);
@@ -798,9 +794,11 @@ window.addEventListener('DOMContentLoaded', () => {
     setUI();
   }
 
+  // ★ START押下＝ユーザー操作内で primeVoice() を呼ぶ
   startBtn.addEventListener("click", () => {
+    primeVoice();
+
     if(stopping || lockedAfterFinish) return;
-    // instant reset before spinning
     prepareFromTarget();
     startDrumroll();
 
@@ -861,34 +859,23 @@ window.addEventListener('DOMContentLoaded', () => {
     finished=true;
     setUI();
 
-    // layout stays; blank left side and move ¥ immediately (ONLY ONCE)
     blankLeftDigits(endIdx);
     yenMoveToVisibleDigit(endIdx);
     setTimeout(() => sfxBashi(), 680);
 
     const finalStr = commaString(targetRawUnpadded);
 
-    // ¥が止まってから少しタメて読み上げ（ポップアップ表示なし）
-    setTimeout(() => {
-      sfxMurmur();
-    }, 1500);
+    setTimeout(() => { sfxMurmur(); }, 1500);
     setTimeout(() => {
       speak(finalStr + "円");
-      // ルーレット表示自体を「ドン」
       const priceEl = document.querySelector(".price");
       if(priceEl){
         priceEl.classList.remove("donMain");
         void priceEl.offsetWidth;
         priceEl.classList.add("donMain");
       }
-      // 確定後ロック
       setLock(true);
     }, 2000);
-
-    // FINAL表示＆読み上げはやめる（¥が止まったあとに大きく表示するだけ）
-    // ¥の移動（650ms）完了後にドン表示（¥も一緒に大きく）
-    /* pop-up表示なし */
-    /* no auto reset */
   });
 
   againBtn.addEventListener("click", () => prepareFromTarget());
@@ -896,7 +883,6 @@ window.addEventListener('DOMContentLoaded', () => {
   // init
   formatTargetInput();
   setUI();
-
 });
 </script>
 
